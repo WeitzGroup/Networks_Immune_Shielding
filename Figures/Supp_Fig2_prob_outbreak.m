@@ -6,7 +6,7 @@ load epi_params
 T_vec = pars.T_vec;
 N_steps = pars.N_steps;
 n = pars.n; % network size
-
+pars.n_A = 100;
 load rand_bip_n200.mat; % load a bipartite network of 200 nodes called 'adj'
 load hcw_pat_id.mat % load logical column vectors for hcw and pat
 %Epi is the network with the number of S, E, I and R in every time step
@@ -18,13 +18,14 @@ weekly = daily*7;
 rewire_freq = weekly;
 isolation_freq = weekly;
 isolation_rewiring_freq = weekly;
-n_runs = 500;
+
+% Number of iterations and initial conditions
 inf_0 = 1;
+R_init = [20, 80]; % initial number of immunized indiv.
+n_runs = 500;
+
 % Vectors
 epi = zeros(5, N_steps); % 1 - S (0), 2 - E (1),3 - I(2), 4 - R(3), 5 - ISOLATED(4)
-
-% Number of iterations
-R_init = [0, 5, 10, 20, 40, 80, 120, 160]; % initial number of immunized indiv.
 
 %% BASELINE CASE
 Rinf_bas = zeros(n_runs, length(R_init));
@@ -33,12 +34,10 @@ for i = 1:length(R_init)
     rec_0 = R_init(i);
     node_status = initial_cond(inf_0, rec_0, pars);
     epi = zeros(4, N_steps);
-
     for i_t = 1:N_steps
         node_status = SEIR_stochastic_fct(adj, node_status, pars); %SEIR dynamics
         epi(:,i_t) = type_to_count(node_status); % Count each type
     end
-    
     Rinf_bas(j, i) = epi(4,end);
     end
 end
@@ -50,7 +49,6 @@ for i = 1:length(R_init)
     rec_0 = R_init(i);
     node_status = initial_cond(inf_0, rec_0, pars);
     epi = zeros(4, N_steps);
-
     %prewire the network
     adj_new = pre_rewire(adj, node_status, is_pat, is_hcw);
     
@@ -58,13 +56,11 @@ for i = 1:length(R_init)
         node_status = SEIR_stochastic_fct(adj_new, node_status, pars); %SEIR dynamics
         epi(:,i_t) = type_to_count(node_status); % Count each type
     end
-    
     Rinf_prew(j, i) = epi(4, end); 
     end   
 end
 %% ISOLATION CASE
 Rinf_iso = zeros(n_runs, length(R_init));
-epi_R = zeros(n_runs, N_steps);
 
 for i = 1:length(R_init)  
     for j = 1:n_runs
@@ -82,7 +78,7 @@ for i = 1:length(R_init)
     end
     
     % Run de SEIR model over 100 days and isolate infected HCW every week  
-    Rinf_iso(j, i) = epi(4,end);
+    Rinf_iso(j, i) = epi(4, end);
 
     end  
 end
@@ -129,29 +125,83 @@ for i = 1:length(R_init)
         Rinf_rewiso(j, i) = epi(4, end);
     end
 end
-%%
-% Calculate the Probability of an outbreak greater than 10% of the
-% population.
-P_outbreak = zeros(length(R_init), 5);
-P_outbreak(:,1) = sum((Rinf_bas-R_init) > n * 0.1)./n_runs;
-P_outbreak(:,2) = sum((Rinf_prew-R_init) > n * 0.1)./n_runs;
-P_outbreak(:,3) = sum((Rinf_iso-R_init) > n * 0.1)./n_runs;
-P_outbreak(:,4) = sum((Rinf_rew-R_init) > n * 0.1)./n_runs;
-P_outbreak(:,5) = sum((Rinf_rewiso-R_init) > n * 0.1)./n_runs;
+%% Supplementary Figure 2 - Comparison of probability of outbreak for different interventions and immunity levels
+figure(5);
+set(gcf, 'Position',  [200, 200, 1200, 450])% set position, width and height of plot
+hold all;
+colorpalette=[0.7,0.7,0.7;0.9,0.6,0.6;0.3,0.8,0.2;0.1,0.2,0.8;0.6,0.1,0.7];
 
-%% Figure 4
-figure(4);
-hold all
-colorpalette=[0.7,0.7,0.7;1,1,0.1;0.3,0.8,0.2;0.1,0.2,0.8;0.6,0.1,0.7];
-for x=1:5    
-    area((R_init.*100) / n,P_outbreak(:,x),'LineWidth',1.5,...
-        'EdgeColor','w','FaceColor',colorpalette(x,:),'FaceAlpha',0.7);
-
-    xlabel('% Immunization')
-    ylabel('Prob. outbreak>10%');  
+subplot(1,2,1); %Immunized 10%
+%5 stands for no intervention, prew, iso, rew, iso+rew
+P_outbreak = zeros(n - R_init(1), 5);
+temp_sum = R_init(1) + inf_0;
+for x = 0:(n - temp_sum)
+    P_outbreak(x+1, 1) = sum((Rinf_bas(:,1) - temp_sum)>=x)./n_runs;
 end
 
-legend('no interventions','prewiring','isolation (w)','rewiring (w)','isolation+rewiring (w)','box','off')
-box on
-set(gca, 'FontSize', 16) 
+for x=0:(n - temp_sum)
+    P_outbreak(x+1, 2)=sum((Rinf_prew(:,1) - temp_sum)>=x)./n_runs;
+end
+
+for x=0:(n - temp_sum)
+    P_outbreak(x+1, 3)=sum((Rinf_iso(:,1) - temp_sum)>=x)./n_runs;
+end
+
+for x=0:(n - temp_sum)
+    P_outbreak(x+1, 4)=sum((Rinf_rew(:,1) - temp_sum)>=x)/n_runs;
+end
+
+for x=0:(n - temp_sum)
+    P_outbreak(x+1, 5)=sum((Rinf_rewiso(:,1) - temp_sum)>=x)./n_runs;
+end
+
+hold all;
+for y = 1:5    
+    plot(linspace(0, 1, n - R_init(1)), P_outbreak(:,y), 'LineWidth',2,...
+        'Color',colorpalette(y, :));
+    xlabel('Total infected [frac.]');
+    ylabel('Prob. outbreak')
+    legend('no interventions','prewiring','isolation (w)','rewiring (w)',...
+        'isolation+rewiring (w)','box','off')
+    title(strcat([num2str(100*R_init(1)./n),'% vaccination']));
+    set(gca, 'FontSize', 16)     
+    box on
+
+end
+hold off;
+
+subplot(1,2,2);% Immunized 40%
+P_outbreak = zeros(n - R_init(2), 5);
+temp_sum = R_init(2) + inf_0;
+
+for x=0:(n-temp_sum)
+    P_outbreak(x+1,1)=sum((Rinf_bas(:,2) - temp_sum)>=x)./n_runs;
+end
+for x=0:(n-temp_sum)
+    P_outbreak(x+1,2)=sum((Rinf_prew(:,2) - temp_sum)>=x)./n_runs;
+end
+for x=0:(n-temp_sum)
+    P_outbreak(x+1,3)=sum((Rinf_iso(:,2) - temp_sum)>=x)./n_runs;
+end
+for x=0:(n-temp_sum)
+    P_outbreak(x+1,4)=sum((Rinf_rew(:,2) - temp_sum)>=x)/n_runs;
+end
+for x=0:(n-temp_sum)
+    P_outbreak(x+1,5)=sum((Rinf_rewiso(:,2) - temp_sum)>=x)./n_runs;
+end
+hold all;
+
+for y=1:5    
+    plot(linspace(0, 1, n - R_init(2)), P_outbreak(:,y),'LineWidth',2,...
+        'Color', colorpalette(y,:));
+   
+    xlabel('Total infected [frac.]');
+    ylabel('Prob. outbreak');
+    legend('no interventions','prewiring','isolation (w)','rewiring (w)',...
+        'isolation+rewiring (w)','box','off');
+    title(strcat([num2str(100*R_init(2)./n),'% vaccination']));
+    set(gca, 'FontSize', 16);     
+    box on
+
+end
 hold off;

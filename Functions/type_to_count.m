@@ -6,5 +6,6 @@ function r = type_to_count(G_type)
     for i = 1:4
         G_count(i) = sum(G_type == i-1);
     end
+    G_count(2) = G_count(2) + sum(G_type == 4); % add isolated individuals
     r =  G_count;
 end
